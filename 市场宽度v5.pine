@@ -1,0 +1,96 @@
+//@version=5
+indicator('市场宽度', shorttitle='市场宽度', overlay=false, precision=1)
+
+// 自动切换功能，根据主要图表符号自动更改市场
+auto1 = input(true, 'Auto switch with the main chart symbol [coverage: \'SPX\'=S&P; \'NDX\'=NQ100; \'IXIC\'=NQ Comp; \'DJI\'=Dow Indu; \'RUI\'=Rus1000; \'RUT\'=Rus2000; \'RUA\'=Rus3000; \'CRSPTM1/VTI\'=total mkt; other symbols = Null]')
+
+mk1 = switch syminfo.ticker
+    'SPX'     => 'S&P'
+    'NDX'     => 'NQ100'
+    'NDQ'     => 'NQ100'
+    'IXIC'    => 'NQ Comp'
+    'DJI'     => 'Dow Indu'
+    'RUI'     => 'Rus1000'
+    'RUT'     => 'Rus2000'
+    'RUA'     => 'Rus3000'
+    'VTI'     => 'total mkt'
+    'CRSPTM1' => 'total mkt'
+    => '0'  // 如果没有匹配的符号，返回 '0'
+
+// 用户手动选择市场
+mk2 = input.string(defval='S&P', title="Select Market manually when 'Auto-switch' is unchecked",
+ options=['NQ Comp', 'NQ100', 'S&P', 'total mkt', 'Dow Indu', 'Rus1000', 'Rus2000', 'Rus3000', 'Sse', 'HSI'])
+
+// 根据 auto1 决定最终市场选择
+mk = auto1 ? mk1 : mk2
+
+// 使用 switch 优化市场编号的分配
+mkt = switch mk
+    'NQ Comp'  => 1
+    'NQ100'    => 2
+    'S&P'      => 3
+    'total mkt' => 4
+    'Dow Indu' => 5
+    'Rus2000'  => 6
+    'Rus3000'  => 7
+    'Rus1000'  => 8
+    => 9 // 默认编号
+
+// 定义函数来获取市场符号
+getMarketSymbol(mkt, suffix) =>
+    if mkt == 1
+        'NC' + suffix
+    else if mkt == 2
+        'ND' + suffix
+    else if mkt == 3
+        'S5' + suffix
+    else if mkt == 4
+        'MM' + suffix
+    else if mkt == 5
+        'DI' + suffix
+    else if mkt == 6
+        'R2' + suffix
+    else if mkt == 7
+        'R3' + suffix
+    else if mkt == 8
+        'R1' + suffix
+    else
+        '0'
+
+// 分别绘制每个图表
+show1 = input(true, title='% of stocks above 20 day')
+symbol1 = getMarketSymbol(mkt, "TW")
+security_1 = request.security(symbol1, timeframe.period, close)
+plot(show1 ? security_1 : na, title='20 day', color=color.new(color.fuchsia, 0), linewidth=1)
+
+show2 = input(true, title='% of stocks above 50 day')
+symbol2 = getMarketSymbol(mkt, "FI")
+security_2 = request.security(symbol2, timeframe.period, close)
+plot(show2 ? security_2 : na, title='50 day', color=color.new(color.teal, 0), linewidth=1)
+
+show3 = input(true, title='% of stocks above 200 day')
+symbol3 = getMarketSymbol(mkt, "TH")
+security_3 = request.security(symbol3, timeframe.period, close)
+plot(show3 ? security_3 : na, title='200 day', color=color.new(color.silver, 0), linewidth=1)
+
+show4 = input(true, title='% of stocks above 100 day')
+symbol4 = getMarketSymbol(mkt, "OH")
+security_4 = request.security(symbol4, timeframe.period, close)
+plot(show4 ? security_4 : na, title='100 day', color=color.new(color.red, 0), linewidth=1)
+
+show5 = input(false, title='% of stocks above 5 day')
+symbol5 = getMarketSymbol(mkt, "FD")
+security_5 = request.security(symbol5, timeframe.period, close)
+plot(show5 ? security_5 : na, title='5 day', color=color.new(color.orange, 0), linewidth=1)
+
+show6 = input(false, title='% of stocks above 150 day')
+symbol6 = getMarketSymbol(mkt, "OF")
+security_6 = request.security(symbol6, timeframe.period, close)
+plot(show6 ? security_6 : na, title='150 day', color=color.new(color.blue, 0), linewidth=1)
+
+
+// 绘制参考线
+line_m = input(80, title='horizontal reference line 1')
+plot(line_m, style=plot.style_line, color=color.new(color.blue, 0), linewidth=1, title='顶部范围线')
+line_m1 = input(20, title='horizontal reference line 2')
+plot(line_m1, style=plot.style_line, color=color.new(color.red, 0), linewidth=1, title='底部范围线')

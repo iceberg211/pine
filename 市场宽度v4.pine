@@ -1,0 +1,75 @@
+//@version=4
+study("市场宽度", shorttitle="市场宽度", overlay=false, precision=1)
+//towT[c]
+//automatic switching function which will automicatically change the indicator's lines according to the relevant index symbols of the main chart. other symbols will return Null 
+auto1 = input(true, " Auto switch with the main chart symbol [coverage: 'SPX'=S&P; 'NDX'=NQ100; 'IXIC'=NQ Comp; 'DJI'=Dow Indu; 'RUI'=Rus1000; 'RUT'=Rus2000; 'RUA'=Rus3000; 'CRSPTM1/VTI'=total mkt; other symbols =Null]")
+mk1 = syminfo.ticker == "SPX" ? "S&P" : 
+   syminfo.ticker == "NDX" ? "NQ100" : syminfo.ticker == "NDQ" ? "NQ100" : 
+   syminfo.ticker == "IXIC" ? "NQ Comp" : syminfo.ticker == "DJI" ? "Dow Indu" : 
+   syminfo.ticker == "RUI" ? "Rus1000" : syminfo.ticker == "RUT" ? "Rus2000" : 
+   syminfo.ticker == "RUA" ? "Rus3000" : syminfo.ticker == "VTI" ? "total mkt" : 
+   syminfo.ticker == "CRSPTM1" ? "total mkt" : "0"
+
+// User customizes the market 
+mk2 = input(defval="S&P", type=input.string, title="select Market manually when above 'Auto-switch' box is unchecked", 
+ options=["NQ Comp", "NQ100", "S&P", "total mkt", "Dow Indu", "Rus1000", "Rus2000", "Rus3000"])
+
+
+mk = auto1 ? mk1 : mk2
+
+mkt = mk == "NQ Comp" ? 1 : mk == "NQ100" ? 2 : 
+   mk == "S&P" ? 3 : mk == "total mkt" ? 4 : mk == "Dow Indu" ? 5 : 
+   mk == "Rus2000" ? 6 : mk == "Rus3000" ? 7 : mk == "Rus1000" ? 8 : 9
+
+///// plot above MA lines
+show1 = input(true, title="% of stocks above 20 day")
+mkt1 = mkt == 1 ? "NCTW" : 
+   mkt == 2 ? "NDTW" : mkt == 3 ? "S5TW" : mkt == 4 ? "MMTW" : mkt == 5 ? "DITW" : 
+   mkt == 6 ? "R2TW" : mkt == 7 ? "R3TW" : mkt == 8 ? "R1TW" : "0"
+security_1 = security(mkt1, timeframe.period, close)
+plot(show1 ? security_1 : na, title="% of stocks above 20 day", color=color.new(color.fuchsia, 0))
+
+
+show2 = input(true, title="% of stocks above 50 day")
+
+mkt2 = mkt == 1 ? "NCFI" : 
+   mkt == 2 ? "NDFI" : mkt == 3 ? "S5FI" : mkt == 4 ? "MMFI" : mkt == 5 ? "DIFI" : 
+   mkt == 6 ? "R2FI" : mkt == 7 ? "R3FI" : mkt == 8 ? "R1FI" : "0"
+security_2 = security(mkt2, timeframe.period, close)
+
+plot(show2 ? security_2 : na, title="% of stocks above 50 day",color= color.new(color.teal, 0), linewidth=2)
+
+show3 = input(true, title="% of stocks above 200 day")
+mkt3 = mkt == 1 ? "NCTH" : 
+   mkt == 2 ? "NDTH" : mkt == 3 ? "S5TH" : mkt == 4 ? "MMTH" : mkt == 5 ? "DITH" : 
+   mkt == 6 ? "R2TH" : mkt == 7 ? "R3TH" : mkt == 8 ? "R1TH" : "0"
+security_3 = security(mkt3, timeframe.period, close)
+plot(show3 ? security_3 : na, title="% of stocks above 200 day", color=color.new(color.silver, 0))
+
+show5 = input(false, title="% of stocks above 5 day")
+mkt5 = mkt == 1 ? "NCFD" : 
+   mkt == 2 ? "NDFD" : mkt == 3 ? "S5FD" : mkt == 4 ? "MMFD" : mkt == 5 ? "DIFD" : 
+   mkt == 6 ? "R2FD" : mkt == 7 ? "R3FD" : mkt == 8 ? "R1FD" : "0"
+security_4 = security(mkt5, timeframe.period, close)
+plot(show5 ? security_4 : na, title="% of stocks above 5 day", color=color.new(color.orange, 0))
+
+show4 = input(true, title="% of stocks above 100 day")
+mkt4 = mkt == 1 ? "NCOH" : 
+   mkt == 2 ? "NDOH" : mkt == 3 ? "S5OH" : mkt == 4 ? "MMOH" : mkt == 5 ? "DIOH" : 
+   mkt == 6 ? "R2OH" : mkt == 7 ? "R3OH" : mkt == 8 ? "R1OH" : "0"
+security_5 = security(mkt4, timeframe.period, close)
+plot(show4 ? security_5 : na, title="% of stocks above 100 day", color= color.new(color.red, 0))
+
+
+show6 = input(false, title="% of stocks above 150 day")
+mkt6 = mkt == 1 ? "NCOF" : 
+   mkt == 2 ? "NDOF" : mkt == 3 ? "S5OF" : mkt == 4 ? "MMOF" : mkt == 5 ? "DIOF" : 
+   mkt == 6 ? "R2OF" : mkt == 7 ? "R3OF" : mkt == 8 ? "R1OF" : "0"
+security_6 = security(mkt6, timeframe.period, close)
+plot(show6 ? security_6 : na, title="% of stocks above 150 day", color=color.new(color.blue, 0))
+
+//plot reference lines
+line_m = input(80, title="horizontal reference line 1")
+plot(line_m, style=plot.style_line, color=color.blue, linewidth=1, title="顶部范围线")
+line_m1 = input(20, title="horizontal reference line 2")
+plot(line_m1, style=plot.style_line, color=color.red, linewidth=1, title="底部范围线")

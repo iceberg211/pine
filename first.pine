@@ -1,0 +1,60 @@
+//@version=5
+strategy("移动止盈止损示例", overlay=true)
+
+// 输入参数
+var float stopLoss = na
+var float takeProfit = na
+var float trailingStop = na
+var bool isLong = false
+var bool isShort = false
+
+// 进场条件（示例）
+if (crossover(close, ta.sma(close, 20)) and not isLong)
+    strategy.entry("Long", strategy.long)
+    isLong := true
+    stopLoss := close * 0.98  // 设定止损
+    takeProfit := na  // 重置止盈
+
+if (crossunder(close, ta.sma(close, 20)) and not isShort)
+    strategy.entry("Short", strategy.short)
+    isShort := true
+    stopLoss := close * 1.02  // 设定止损
+    takeProfit := na  // 重置止盈
+
+// 移动止盈逻辑
+if (isLong)
+    // 更新止盈价
+    takeProfit := na(takeProfit) ? close * 1.05 : math.max(takeProfit, close * 1.05)
+
+    // 止损触发
+    if (close < stopLoss)
+        strategy.close("Long")
+        isLong := false
+
+    // 移动止盈触发
+    if (close > takeProfit)
+        strategy.close("Long")
+        isLong := false
+
+if (isShort)
+    // 更新止盈价
+    takeProfit := na(takeProfit) ? close * 0.95 : math.min(takeProfit, close * 0.95)
+
+    // 止损触发
+    if (close > stopLoss)
+        strategy.close("Short")
+        isShort := false
+
+    // 移动止盈触发
+    if (close < takeProfit)
+        strategy.close("Short")
+        isShort := false
+
+// 绘制止损和止盈线
+if (isLong)
+    line.new(bar_index, stopLoss, bar_index + 1, stopLoss, color=color.red, width=1)
+    line.new(bar_index, takeProfit, bar_index + 1, takeProfit, color=color.green, width=1)
+
+if (isShort)
+    line.new(bar_index, stopLoss, bar_index + 1, stopLoss, color=color.red, width=1)
+    line.new(bar_index, takeProfit, bar_index + 1, takeProfit, color=color.green, width=1)
