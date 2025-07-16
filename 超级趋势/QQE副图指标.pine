@@ -1,0 +1,159 @@
+//@version=5
+//
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ QQE MOD 副图指标 - 配合超级趋势使用
+//║ 专门用于副图显示，提供清晰的QQE信号
+//║ 可以与主图的超级趋势指标配合使用
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+indicator('QQE MOD 副图指标', 'QQE MOD', false)
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ QQE MOD 设置
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+// QQE 1
+RSI_Period = input.int(6, 'QQE1 RSI长度', group='QQE1设置')
+SF = input.int(5, 'QQE1 RSI平滑', group='QQE1设置')
+QQE = input.float(3, 'QQE1 快速因子', group='QQE1设置')
+ThreshHold = input.float(3, 'QQE1 阈值', group='QQE1设置')
+
+// QQE 2
+RSI_Period2 = input.int(6, 'QQE2 RSI长度', group='QQE2设置')
+SF2 = input.int(5, 'QQE2 RSI平滑', group='QQE2设置')
+QQE2 = input.float(1.61, 'QQE2 快速因子', group='QQE2设置')
+ThreshHold2 = input.float(3, 'QQE2 阈值', group='QQE2设置')
+
+// 布林带设置
+length = input.int(50, '布林带长度', minval=1, group='布林带设置')
+mult = input.float(0.35, '布林带倍数', minval=0.001, maxval=5, step=0.1, group='布林带设置')
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ QQE 1 计算
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+src = close
+Wilders_Period = RSI_Period * 2 - 1
+
+Rsi = ta.rsi(src, RSI_Period)
+RsiMa = ta.ema(Rsi, SF)
+AtrRsi = math.abs(RsiMa[1] - RsiMa)
+MaAtrRsi = ta.ema(AtrRsi, Wilders_Period)
+dar = ta.ema(MaAtrRsi, Wilders_Period) * QQE
+
+var float longband = na
+var float shortband = na
+var int trend = na
+
+DeltaFastAtrRsi = dar
+RSIndex = RsiMa
+newshortband = RSIndex + DeltaFastAtrRsi
+newlongband = RSIndex - DeltaFastAtrRsi
+
+longband := RSIndex[1] > longband[1] and RSIndex > longband[1] ? 
+   math.max(longband[1], newlongband) : newlongband
+shortband := RSIndex[1] < shortband[1] and RSIndex < shortband[1] ? 
+   math.min(shortband[1], newshortband) : newshortband
+
+cross_1 = ta.cross(longband[1], RSIndex)
+trend := ta.cross(RSIndex, shortband[1]) ? 1 : cross_1 ? -1 : nz(trend[1], 1)
+FastAtrRsiTL = trend == 1 ? longband : shortband
+
+// 布林带计算
+basis = ta.sma(FastAtrRsiTL - 50, length)
+dev = mult * ta.stdev(FastAtrRsiTL - 50, length)
+upper = basis + dev
+lower = basis - dev
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ QQE 2 计算
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+src2 = close
+Wilders_Period2 = RSI_Period2 * 2 - 1
+
+Rsi2 = ta.rsi(src2, RSI_Period2)
+RsiMa2 = ta.ema(Rsi2, SF2)
+AtrRsi2 = math.abs(RsiMa2[1] - RsiMa2)
+MaAtrRsi2 = ta.ema(AtrRsi2, Wilders_Period2)
+dar2 = ta.ema(MaAtrRsi2, Wilders_Period2) * QQE2
+
+var float longband2 = na
+var float shortband2 = na
+var int trend2 = na
+
+DeltaFastAtrRsi2 = dar2
+RSIndex2 = RsiMa2
+newshortband2 = RSIndex2 + DeltaFastAtrRsi2
+newlongband2 = RSIndex2 - DeltaFastAtrRsi2
+
+longband2 := RSIndex2[1] > longband2[1] and RSIndex2 > longband2[1] ? 
+   math.max(longband2[1], newlongband2) : newlongband2
+shortband2 := RSIndex2[1] < shortband2[1] and RSIndex2 < shortband2[1] ? 
+   math.min(shortband2[1], newshortband2) : newshortband2
+
+cross_2 = ta.cross(longband2[1], RSIndex2)
+trend2 := ta.cross(RSIndex2, shortband2[1]) ? 1 : cross_2 ? -1 : nz(trend2[1], 1)
+FastAtrRsi2TL = trend2 == 1 ? longband2 : shortband2
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ 信号计算
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+// QQE 信号条件
+Greenbar1 = RsiMa2 - 50 > ThreshHold2
+Greenbar2 = RsiMa - 50 > upper
+Redbar1 = RsiMa2 - 50 < 0 - ThreshHold2
+Redbar2 = RsiMa - 50 < lower
+
+// 综合信号
+bullish_qqe = Greenbar1 and Greenbar2
+bearish_qqe = Redbar1 and Redbar2
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ 绘图
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+// 零线
+Zero = hline(0, color=color.white, linestyle=hline.style_dotted, linewidth=1)
+
+// QQE 线
+plot(FastAtrRsi2TL - 50, title='QQE线', color=color.white, linewidth=2)
+
+// QQE2 柱状图
+hcolor2 = RsiMa2 - 50 > ThreshHold2 ? color.silver :
+   RsiMa2 - 50 < 0 - ThreshHold2 ? color.silver : na
+plot(RsiMa2 - 50, color=hcolor2, title='QQE2柱状图', style=plot.style_columns, transparency=50)
+
+// 信号柱状图
+plot(bullish_qqe ? RsiMa2 - 50 : na, title="QQE看涨", style=plot.style_columns, color=#00c3ff)
+plot(bearish_qqe ? RsiMa2 - 50 : na, title="QQE看跌", style=plot.style_columns, color=#ff0062)
+
+// 布林带
+plot(upper, title='布林带上轨', color=color.blue, linewidth=1, transparency=70)
+plot(lower, title='布林带下轨', color=color.blue, linewidth=1, transparency=70)
+plot(basis, title='布林带中轨', color=color.yellow, linewidth=1, transparency=70)
+
+// 填充
+fill_color_upper = color.new(color.blue, 95)
+fill_color_lower = color.new(color.blue, 95)
+fill(plot(upper), plot(basis), fill_color_upper, title='上轨填充')
+fill(plot(basis), plot(lower), fill_color_lower, title='下轨填充')
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ 警报
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+alertcondition(bullish_qqe and not bullish_qqe[1], 'QQE看涨信号', 'QQE MOD 看涨信号出现')
+alertcondition(bearish_qqe and not bearish_qqe[1], 'QQE看跌信号', 'QQE MOD 看跌信号出现')
+alertcondition((bullish_qqe and not bullish_qqe[1]) or (bearish_qqe and not bearish_qqe[1]), 'QQE任意信号', 'QQE MOD 交易信号出现')
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ 使用说明
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+// 这个副图指标专门显示QQE MOD信号，配合主图的超级趋势指标使用
+// 
+// 信号说明：
+// - 蓝色柱状图：QQE看涨信号（两个QQE条件都满足）
+// - 红色柱状图：QQE看跌信号（两个QQE条件都满足）
+// - 白色线：QQE主线
+// - 蓝色区域：布林带范围
+// 
+// 使用建议：
+// - 结合主图的超级趋势指标确认信号
+// - 当QQE信号与超级趋势方向一致时，信号更可靠
+// - 注意QQE信号的强度和持续性

@@ -1,0 +1,144 @@
+//@version=5
+strategy("三合一趋势策略 (SuperTrend + QQE MOD + A-V2)",
+         overlay=true,
+         initial_capital=10000,
+         default_qty_value=10,
+         default_qty_type=strategy.percent_of_equity,
+         commission_value=0.05,
+         pyramiding=0)
+
+// =================================================================================
+// SECTION 1: SuperTrend
+// =================================================================================
+st_group = "SuperTrend Settings"
+st_atr_period = input.int(9, "ATR Period", group = st_group)
+st_factor = input.float(3.9, "Factor", group = st_group)
+
+[st_line, st_direction] = ta.supertrend(st_factor, st_atr_period)
+
+// --- Logic
+st_is_up_trend = st_direction == -1
+st_is_down_trend = st_direction == 1
+st_buy_signal = st_is_up_trend and st_is_down_trend[1]
+st_sell_signal = st_is_down_trend and st_is_up_trend[1]
+
+// --- Plotting
+plot(st_line, "SuperTrend", color = st_is_up_trend ? color.new(color.green, 0) : color.new(color.red, 0), linewidth=2)
+
+
+// =================================================================================
+// SECTION 2: QQE MOD
+// =================================================================================
+qqe_group = "QQE MOD Settings"
+qqe_rsi_period = input.int(6, title='RSI Length', group=qqe_group)
+qqe_sf = input.int(5, title='RSI Smoothing', group=qqe_group)
+qqe_qqe = input.float(3, title='Fast QQE Factor', group=qqe_group)
+qqe_src = input(close, title="RSI Source", group=qqe_group)
+qqe_length = input.int(50, minval=1, title="Bollinger Length", group=qqe_group)
+qqe_mult = input.float(0.35, minval=0.001, maxval=5, step=0.1, title="BB Multiplier", group=qqe_group)
+
+// --- Calculation
+qqe_wilders_period = qqe_rsi_period * 2 - 1
+qqe_rsi = ta.rsi(qqe_src, qqe_rsi_period)
+qqe_rsi_ma = ta.ema(qqe_rsi, qqe_sf)
+qqe_atr_rsi = math.abs(qqe_rsi_ma[1] - qqe_rsi_ma)
+qqe_ma_atr_rsi = ta.ema(qqe_atr_rsi, qqe_wilders_period)
+qqe_dar = ta.ema(qqe_ma_atr_rsi, qqe_wilders_period) * qqe_qqe
+
+longband = 0.0
+shortband = 0.0
+trend = 0
+
+newlongband = qqe_rsi_ma - qqe_dar
+newshortband = qqe_rsi_ma + qqe_dar
+longband := qqe_rsi_ma[1] > longband[1] and qqe_rsi_ma > longband[1] ? math.max(longband[1], newlongband) : newlongband
+shortband := qqe_rsi_ma[1] < shortband[1] and qqe_rsi_ma < shortband[1] ? math.min(shortband[1], newshortband) : newshortband
+cross_1 = ta.cross(longband[1], qqe_rsi_ma)
+trend := ta.cross(qqe_rsi_ma, shortband[1]) ? 1 : cross_1 ? -1 : nz(trend[1], 1)
+fast_atr_rsi_tl = trend == 1 ? longband : shortband
+
+basis = ta.sma(fast_atr_rsi_tl - 50, qqe_length)
+dev = qqe_mult * ta.stdev(fast_atr_rsi_tl - 50, qqe_length)
+qqe_upper_band = basis + dev
+qqe_lower_band = basis - dev
+
+// --- Logic
+qqe_is_long = (qqe_rsi_ma - 50) > qqe_upper_band
+qqe_is_short = (qqe_rsi_ma - 50) < qqe_lower_band
+qqe_is_consolidation = not qqe_is_long and not qqe_is_short
+
+// --- Plotting (Background Color)
+bgcolor(qqe_is_long ? color.new(color.blue, 85) : qqe_is_short ? color.new(color.red, 85) : color.new(color.gray, 90), title="QQE State")
+
+
+// =================================================================================
+// SECTION 3: Trend Indicator A-V2
+// =================================================================================
+av2_group = "A-V2 Settings"
+av2_ma_type = input.string("EMA", "MA Type", options=["ALMA", "EMA", "HMA", "SMA", "SWMA", "VWMA", "WMA", "ZLEMA"], group=av2_group)
+av2_ma_period = input.int(52, "MA Period", minval=1, group=av2_group)
+av2_alma_offset = input.float(0.85, "ALMA Shift", 0, 1, 0.05, group=av2_group)
+av2_alma_sigma = input.int(6, "ALMA Deviation", 1, step=1, group=av2_group)
+
+// --- Calculation
+f_av2(src, period) =>
+    switch av2_ma_type
+        "ALMA" => ta.alma(src, period, av2_alma_offset, av2_alma_sigma)
+        "HMA" => ta.hma(src, period)
+        "SMA" => ta.sma(src, period)
+        "SWMA" => ta.swma(src)
+        "VWMA" => ta.vwma(src, period)
+        "WMA" => ta.wma(src, period)
+        "ZLEMA" => ta.ema(src + src - src[math.floor((period - 1) / 2)], period)
+        => ta.ema(src, period)
+
+ha_ticker = ticker.heikinashi(syminfo.tickerid)
+ha_open = request.security(ha_ticker, timeframe.period, open)
+ha_close = request.security(ha_ticker, timeframe.period, close)
+
+ma_ha_open = f_av2(ha_open, av2_ma_period)
+ma_ha_close = f_av2(ha_close, av2_ma_period)
+
+// --- Logic
+av2_is_up = ma_ha_close > ma_ha_open
+av2_is_down = ma_ha_close < ma_ha_open
+
+// --- Plotting
+av2_up_plot = plot(ma_ha_close, "A-V2 Up Line", color=av2_is_up ? color.new(color.aqua, 0) : color.new(color.gray, 70), linewidth=2)
+av2_down_plot = plot(ma_ha_open, "A-V2 Down Line", color=av2_is_down ? color.new(color.maroon, 0) : color.new(color.gray, 70), linewidth=2)
+fill(av2_up_plot, av2_down_plot, color=av2_is_up ? color.new(color.aqua, 80) : av2_is_down ? color.new(color.maroon, 80) : color.new(color.gray, 85))
+
+
+// =================================================================================
+// SECTION 4: STRATEGY - Entry, Exit, and Stop Loss
+// =================================================================================
+// --- Entry Conditions
+long_condition = st_buy_signal and qqe_is_long and av2_is_up
+short_condition = st_sell_signal and qqe_is_short and av2_is_down
+
+// --- Execution
+if (long_condition)
+    strategy.close("Short", comment="Close Short for Long") // Close opposite position if open
+    strategy.entry("Long", strategy.long, comment="Enter Long")
+
+if (short_condition)
+    strategy.close("Long", comment="Close Long for Short") // Close opposite position if open
+    strategy.entry("Short", strategy.short, comment="Enter Short")
+
+// --- Stop Loss Logic
+long_stop_price = ma_ha_open  // Use A-V2 down line for long stop
+short_stop_price = ma_ha_close // Use A-V2 up line for short stop
+
+if strategy.position_size > 0
+    strategy.exit("Exit Long", from_entry="Long", stop=long_stop_price)
+
+if strategy.position_size < 0
+    strategy.exit("Exit Short", from_entry="Short", stop=short_stop_price)
+
+// --- Close on Trend Reversal (Optional)
+// You can enable these lines if you want to exit as soon as one of the conditions is no longer met
+// if strategy.position_size > 0 and (not qqe_is_long or not av2_is_up)
+//     strategy.close("Long", comment="Trend Reversal")
+//
+// if strategy.position_size < 0 and (not qqe_is_short or not av2_is_down)
+//     strategy.close("Short", comment="Trend Reversal")

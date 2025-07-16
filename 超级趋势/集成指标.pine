@@ -1,0 +1,258 @@
+//@version=5
+//
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ 集成指标：超级趋势 + QQE MOD
+//║ 结合了趋势指标A和QQE MOD指标的信号
+//║ 主图显示：超级趋势线
+//║ 信号显示：QQE信号作为背景色和标记
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+indicator('超级趋势 + QQE 集成指标', '超级趋势+QQE', true)
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ 超级趋势指标设置
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+ma_type = input.string('EMA', '移动平均类型', ['ALMA','HMA','SMA','SWMA','VWMA','WMA','ZLEMA','EMA'], group = '超级趋势设置')
+ma_period = input.int(9, '移动平均周期', 1, group='超级趋势设置')
+
+alma_offset = input.float(0.85, 'ALMA偏移', 0, 1, 0.05, group = '超级趋势设置 (ALMA)')
+alma_sigma = input.int(6, 'ALMA偏差', 1, step = 1, group = '超级趋势设置 (ALMA)')
+
+show_trend_line = input.bool(true, '显示趋势线', group = '显示设置')
+show_trend_fill = input.bool(true, '显示趋势填充', group = '显示设置')
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ QQE MOD 设置
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+// QQE 1
+RSI_Period = input.int(6, 'QQE1 RSI长度', group='QQE设置')
+SF = input.int(5, 'QQE1 RSI平滑', group='QQE设置')
+QQE = input.float(3, 'QQE1 快速因子', group='QQE设置')
+ThreshHold = input.float(3, 'QQE1 阈值', group='QQE设置')
+
+// QQE 2
+RSI_Period2 = input.int(6, 'QQE2 RSI长度', group='QQE设置')
+SF2 = input.int(5, 'QQE2 RSI平滑', group='QQE设置')
+QQE2 = input.float(1.61, 'QQE2 快速因子', group='QQE设置')
+ThreshHold2 = input.float(3, 'QQE2 阈值', group='QQE设置')
+
+// 布林带设置
+length = input.int(50, '布林带长度', minval=1, group='QQE设置')
+mult = input.float(0.35, '布林带倍数', minval=0.001, maxval=5, step=0.1, group='QQE设置')
+
+show_qqe_signals = input.bool(true, '显示QQE信号', group = '显示设置')
+show_background = input.bool(true, '显示背景色', group = '显示设置')
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ 超级趋势计算
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+f(x) =>
+    switch ma_type
+        'ALMA' => ta.alma(x, ma_period, alma_offset, alma_sigma)
+        'HMA' => ta.hma(x, ma_period)
+        'SMA' => ta.sma(x, ma_period)
+        'SWMA' => ta.swma(x)
+        'VWMA' => ta.vwma(x, ma_period)
+        'WMA' => ta.wma(x, ma_period)
+        'ZLEMA' => ta.ema(x + x - x[math.floor((ma_period - 1) / 2)], ma_period)
+        => ta.ema(x, ma_period)
+
+ma_heikinashi_open = f(request.security(ticker.heikinashi(syminfo.tickerid), timeframe.period, open))
+ma_heikinashi_close = f(request.security(ticker.heikinashi(syminfo.tickerid), timeframe.period, close))
+ma_heikinashi_high = f(request.security(ticker.heikinashi(syminfo.tickerid), timeframe.period, high))
+ma_heikinashi_low = f(request.security(ticker.heikinashi(syminfo.tickerid), timeframe.period, low))
+
+trend_value = 100 * (ma_heikinashi_close - ma_heikinashi_open) / (ma_heikinashi_high - ma_heikinashi_low)
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ QQE MOD 计算
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+// QQE 1 计算
+src = close
+Wilders_Period = RSI_Period * 2 - 1
+
+Rsi = ta.rsi(src, RSI_Period)
+RsiMa = ta.ema(Rsi, SF)
+AtrRsi = math.abs(RsiMa[1] - RsiMa)
+MaAtrRsi = ta.ema(AtrRsi, Wilders_Period)
+dar = ta.ema(MaAtrRsi, Wilders_Period) * QQE
+
+var float longband = na
+var float shortband = na
+var int trend = na
+
+DeltaFastAtrRsi = dar
+RSIndex = RsiMa
+newshortband = RSIndex + DeltaFastAtrRsi
+newlongband = RSIndex - DeltaFastAtrRsi
+
+longband := RSIndex[1] > longband[1] and RSIndex > longband[1] ? 
+   math.max(longband[1], newlongband) : newlongband
+shortband := RSIndex[1] < shortband[1] and RSIndex < shortband[1] ? 
+   math.min(shortband[1], newshortband) : newshortband
+
+cross_1 = ta.cross(longband[1], RSIndex)
+trend := ta.cross(RSIndex, shortband[1]) ? 1 : cross_1 ? -1 : nz(trend[1], 1)
+FastAtrRsiTL = trend == 1 ? longband : shortband
+
+// 布林带计算
+basis = ta.sma(FastAtrRsiTL - 50, length)
+dev = mult * ta.stdev(FastAtrRsiTL - 50, length)
+upper = basis + dev
+lower = basis - dev
+
+// QQE 2 计算
+src2 = close
+Wilders_Period2 = RSI_Period2 * 2 - 1
+
+Rsi2 = ta.rsi(src2, RSI_Period2)
+RsiMa2 = ta.ema(Rsi2, SF2)
+AtrRsi2 = math.abs(RsiMa2[1] - RsiMa2)
+MaAtrRsi2 = ta.ema(AtrRsi2, Wilders_Period2)
+dar2 = ta.ema(MaAtrRsi2, Wilders_Period2) * QQE2
+
+var float longband2 = na
+var float shortband2 = na
+var int trend2 = na
+
+DeltaFastAtrRsi2 = dar2
+RSIndex2 = RsiMa2
+newshortband2 = RSIndex2 + DeltaFastAtrRsi2
+newlongband2 = RSIndex2 - DeltaFastAtrRsi2
+
+longband2 := RSIndex2[1] > longband2[1] and RSIndex2 > longband2[1] ? 
+   math.max(longband2[1], newlongband2) : newlongband2
+shortband2 := RSIndex2[1] < shortband2[1] and RSIndex2 < shortband2[1] ? 
+   math.min(shortband2[1], newshortband2) : newshortband2
+
+cross_2 = ta.cross(longband2[1], RSIndex2)
+trend2 := ta.cross(RSIndex2, shortband2[1]) ? 1 : cross_2 ? -1 : nz(trend2[1], 1)
+FastAtrRsi2TL = trend2 == 1 ? longband2 : shortband2
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ 信号计算
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+// QQE 信号条件
+Greenbar1 = RsiMa2 - 50 > ThreshHold2
+Greenbar2 = RsiMa - 50 > upper
+Redbar1 = RsiMa2 - 50 < 0 - ThreshHold2
+Redbar2 = RsiMa - 50 < lower
+
+// 综合信号（保持原有逻辑用于背景色）
+bullish_signal = Greenbar1 and Greenbar2 and trend_value > 0
+bearish_signal = Redbar1 and Redbar2 and trend_value < 0
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ 颜色设置
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+color_positive = input.color(color.new(#26A69A, 0), '看涨颜色', group = '颜色设置')
+color_negative = input.color(color.new(#EF5350, 0), '看跌颜色', group = '颜色设置')
+color_neutral = input.color(color.new(#808080, 0), '中性颜色', group = '颜色设置')
+
+trend_color = trend_value > 0 ? color_positive : color_negative
+signal_bg_color = bullish_signal ? color.new(color_positive, 90) : 
+                 bearish_signal ? color.new(color_negative, 90) : na
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ 绘图
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+// 超级趋势线
+plot_open = plot(ma_heikinashi_open, '开盘线', na)
+plot_close = plot(ma_heikinashi_close, '收盘线', show_trend_line ? trend_color : na, 2)
+plot_high = plot(ma_heikinashi_high, '最高线', na)
+plot_low = plot(ma_heikinashi_low, '最低线', na)
+
+plot_highest = plot(math.max(ma_heikinashi_open, ma_heikinashi_close),'最高实体线', na)
+plot_lowest = plot(math.min(ma_heikinashi_open, ma_heikinashi_close),'最低实体线', na)
+
+// 趋势填充
+fill(plot_open, plot_close, show_trend_fill ? color.new(trend_color, 50) : na, '开盘/收盘云')
+
+// QQE 信号标记 - 使用强信号
+plotshape(show_qqe_signals and bullish_signal_new, '新看涨信号', shape.triangleup, location.belowbar,
+         color_positive, size=size.normal)
+plotshape(show_qqe_signals and bearish_signal_new, '新看跌信号', shape.triangledown, location.abovebar,
+         color_negative, size=size.normal)
+
+// 弱信号标记（可选）
+plotshape(show_qqe_signals and bullish_signal and not strong_bullish, '弱看涨信号', shape.circle, location.belowbar,
+         color.new(color_positive, 50), size=size.tiny)
+plotshape(show_qqe_signals and bearish_signal and not strong_bearish, '弱看跌信号', shape.circle, location.abovebar,
+         color.new(color_negative, 50), size=size.tiny)
+
+// 背景色
+bgcolor(show_background ? signal_bg_color : na, '信号背景')
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ 信号强度和过滤
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+// 信号强度计算
+signal_strength_bull = (Greenbar1 ? 1 : 0) + (Greenbar2 ? 1 : 0) + (trend_value > 0 ? 1 : 0)
+signal_strength_bear = (Redbar1 ? 1 : 0) + (Redbar2 ? 1 : 0) + (trend_value < 0 ? 1 : 0)
+
+// 信号过滤 - 只有当所有条件都满足时才发出信号
+strong_bullish = signal_strength_bull == 3
+strong_bearish = signal_strength_bear == 3
+
+// 信号变化检测
+bullish_signal_new = strong_bullish and not strong_bullish[1]
+bearish_signal_new = strong_bearish and not strong_bearish[1]
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ 表格显示信号状态
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+show_table = input.bool(true, '显示信号状态表', group = '显示设置')
+
+if show_table and barstate.islast
+    var table signal_table = table.new(position.top_right, 3, 6, bgcolor=color.white, border_width=1)
+
+    table.cell(signal_table, 0, 0, '指标', text_color=color.black, bgcolor=color.gray)
+    table.cell(signal_table, 1, 0, '状态', text_color=color.black, bgcolor=color.gray)
+    table.cell(signal_table, 2, 0, '强度', text_color=color.black, bgcolor=color.gray)
+
+    table.cell(signal_table, 0, 1, '超级趋势', text_color=color.black)
+    table.cell(signal_table, 1, 1, trend_value > 0 ? '看涨' : '看跌',
+              text_color=trend_value > 0 ? color_positive : color_negative)
+    table.cell(signal_table, 2, 1, str.tostring(math.round(math.abs(trend_value), 2)), text_color=color.black)
+
+    table.cell(signal_table, 0, 2, 'QQE1', text_color=color.black)
+    table.cell(signal_table, 1, 2, Greenbar2 ? '看涨' : Redbar2 ? '看跌' : '中性',
+              text_color=Greenbar2 ? color_positive : Redbar2 ? color_negative : color.gray)
+    table.cell(signal_table, 2, 2, str.tostring(math.round(RsiMa - 50, 2)), text_color=color.black)
+
+    table.cell(signal_table, 0, 3, 'QQE2', text_color=color.black)
+    table.cell(signal_table, 1, 3, Greenbar1 ? '看涨' : Redbar1 ? '看跌' : '中性',
+              text_color=Greenbar1 ? color_positive : Redbar1 ? color_negative : color.gray)
+    table.cell(signal_table, 2, 3, str.tostring(math.round(RsiMa2 - 50, 2)), text_color=color.black)
+
+    table.cell(signal_table, 0, 4, '综合信号', text_color=color.black, bgcolor=color.yellow)
+    table.cell(signal_table, 1, 4, strong_bullish ? '强烈看涨' : strong_bearish ? '强烈看跌' : '无信号',
+              text_color=strong_bullish ? color_positive : strong_bearish ? color_negative : color.gray,
+              bgcolor=color.yellow)
+    table.cell(signal_table, 2, 4, strong_bullish ? str.tostring(signal_strength_bull) :
+              strong_bearish ? str.tostring(signal_strength_bear) : '0',
+              text_color=color.black, bgcolor=color.yellow)
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ 警报
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+alertcondition(bullish_signal_new, '新看涨信号', '超级趋势+QQE 新看涨信号出现')
+alertcondition(bearish_signal_new, '新看跌信号', '超级趋势+QQE 新看跌信号出现')
+alertcondition(bullish_signal_new or bearish_signal_new, '新交易信号', '超级趋势+QQE 新交易信号出现')
+
+//╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+//║ 使用说明
+//╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+// 这个集成指标结合了：
+// 1. 超级趋势指标 - 显示主要趋势方向
+// 2. QQE MOD 指标 - 提供进场和出场信号
+//
+// 信号说明：
+// - 绿色三角形（向上）：强烈看涨信号（所有三个条件都满足）
+// - 红色三角形（向下）：强烈看跌信号（所有三个条件都满足）
+// - 背景色：淡绿色表示看涨环境，淡红色表示看跌环境
+//
+// 使用建议：
+// - 只在强信号时进场（三个条件同时满足）
+// - 结合其他技术分析工具确认信号
+// - 设置适当的止损和止盈
